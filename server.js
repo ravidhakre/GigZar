@@ -7,49 +7,69 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
-// API Endpoint for Contact Form Submission
 app.post('/api/contact', async (req, res) => {
     const { fullName, companyName, email, phone, requirement } = req.body;
 
-    // Basic Validation
     if (!fullName || !companyName || !email || !phone || !requirement) {
         return res.status(400).json({
             success: false,
-            message: 'All fields (fullName, companyName, email, phone, requirement) are required.'
+            message: 'All fields are required.'
         });
     }
 
-    // Configure GoDaddy SMTP Transporter
-    const smtpHost = process.env.SMTP_HOST || 'smtpout.secureserver.net';
-    const smtpPort = parseInt(process.env.SMTP_PORT || '465', 10);
-    const isSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+    const senderEmail = (process.env.GODADDY_EMAIL || '').trim();
+    const senderPassword = (process.env.GODADDY_PASSWORD || '').trim();
+    const recipientEmail = (process.env.RECIPIENT_EMAIL || senderEmail).trim();
 
-    const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: isSecure,
-        auth: {
-            user: process.env.GODADDY_EMAIL,
-            pass: process.env.GODADDY_PASSWORD
-        },
-        tls: {
-            rejectUnauthorized: false
-        }
-    });
+    if (!senderEmail || !senderPassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Email credentials missing in .env file. Please enter GODADDY_EMAIL and GODADDY_PASSWORD.'
+        });
+    }
 
-    const recipient = process.env.RECIPIENT_EMAIL || process.env.GODADDY_EMAIL;
+    let transporterConfig;
+
+    // Detect if user provided a Gmail address vs GoDaddy Custom Domain Email
+    if (senderEmail.toLowerCase().endsWith('@gmail.com')) {
+        console.log('Detected Gmail address. Configuring Gmail SMTP (smtp.gmail.com)...');
+        transporterConfig = {
+            service: 'gmail',
+            auth: {
+                user: senderEmail,
+                pass: senderPassword
+            }
+        };
+    } else {
+        const smtpHost = process.env.SMTP_HOST || 'smtpout.secureserver.net';
+        const smtpPort = parseInt(process.env.SMTP_PORT || '465', 10);
+        const isSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
+
+        console.log(`Configuring GoDaddy SMTP (${smtpHost}:${smtpPort}) for ${senderEmail}...`);
+        transporterConfig = {
+            host: smtpHost,
+            port: smtpPort,
+            secure: isSecure,
+            auth: {
+                user: senderEmail,
+                pass: senderPassword
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        };
+    }
+
+    const transporter = nodemailer.createTransport(transporterConfig);
 
     const mailOptions = {
-        from: `"Gigzar Inquiry Form" <${process.env.GODADDY_EMAIL}>`,
-        to: recipient,
+        from: `"Gigzar Inquiry" <${senderEmail}>`,
+        to: recipientEmail,
         replyTo: email,
         subject: `New Manpower Inquiry from ${fullName} (${companyName})`,
         html: `
@@ -90,7 +110,6 @@ app.post('/api/contact', async (req, res) => {
     };
 
     try {
-        console.log(`Sending email via GoDaddy SMTP (${smtpHost}:${smtpPort}) from ${process.env.GODADDY_EMAIL}...`);
         const info = await transporter.sendMail(mailOptions);
         console.log('Email sent successfully:', info.messageId);
         return res.status(200).json({
@@ -98,23 +117,29 @@ app.post('/api/contact', async (req, res) => {
             message: 'Your request has been sent successfully! Our team will contact you within 24 hours.'
         });
     } catch (error) {
-        console.error('Error sending email via GoDaddy SMTP:', error);
+        console.error('Error sending email:', error);
+        
+        let customHelpMsg = 'Email sending failed. Please check your credentials.';
+        if (senderEmail.endsWith('@gmail.com')) {
+            customHelpMsg = 'For @gmail.com, Google requires a 16-character "App Password" (not your normal Gmail password). Generate it at myaccount.google.com/apppasswords';
+        } else {
+            customHelpMsg = 'For GoDaddy domain email (e.g. admin@gigzar.com), ensure you enter your GoDaddy domain email & password.';
+        }
+
         return res.status(500).json({
             success: false,
-            message: 'Failed to send inquiry email. Please check GoDaddy SMTP credentials.',
+            message: customHelpMsg,
             error: error.message
         });
     }
 });
 
-// Root Route
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
     console.log(`=================================================`);
-    console.log(`Gigzar Backend Server is running on port ${PORT}`);
-    console.log(`API Endpoint: http://localhost:${PORT}/api/contact`);
+    console.log(`Gigzar Backend Server running on http://localhost:${PORT}`);
     console.log(`=================================================`);
 });
