@@ -44,16 +44,27 @@
                         requirement: document.getElementById('requirement').value.trim()
                     };
 
-                    try {
-                        const response = await fetch('/api/contact', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(formData)
-                        });
+                    let response, result;
+                    const apiEndpoint = (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes(':5500') && !window.location.origin.includes(':3000')) 
+                        ? '/api/contact' 
+                        : 'http://127.0.0.1:5000/api/contact';
 
-                        const result = await response.json();
+                    try {
+                        try {
+                            response = await fetch(apiEndpoint, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(formData)
+                            });
+                        } catch (primaryErr) {
+                            response = await fetch('http://127.0.0.1:5000/api/contact', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(formData)
+                            });
+                        }
+
+                        result = await response.json();
 
                         if (response.ok && result.success) {
                             statusMessageDiv.className = 'block p-4 rounded-md text-sm font-medium mb-4 bg-green-50 text-green-800 border border-green-200';
@@ -61,12 +72,12 @@
                             form.reset();
                         } else {
                             statusMessageDiv.className = 'block p-4 rounded-md text-sm font-medium mb-4 bg-red-50 text-red-800 border border-red-200';
-                            statusMessageDiv.innerText = result.message || 'Could not send inquiry. Please try again.';
+                            statusMessageDiv.innerText = (result.message || 'Error sending email.') + (result.error ? ' Detail: ' + result.error : '');
                         }
                     } catch (err) {
                         console.error('Error submitting form:', err);
                         statusMessageDiv.className = 'block p-4 rounded-md text-sm font-medium mb-4 bg-red-50 text-red-800 border border-red-200';
-                        statusMessageDiv.innerText = 'Server connection error. Please make sure backend server is running.';
+                        statusMessageDiv.innerText = 'Backend server not running! Please open terminal in project folder and run: npm start';
                     } finally {
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnText;
