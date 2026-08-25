@@ -45,18 +45,17 @@
                     };
 
                     let response, result;
-                    const apiEndpoint = (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes(':5500') && !window.location.origin.includes(':3000')) 
-                        ? '/api/contact' 
-                        : 'http://127.0.0.1:5000/api/contact';
 
                     try {
+                        // Try contact.php first (Native GoDaddy Hosting Mailer)
                         try {
-                            response = await fetch(apiEndpoint, {
+                            response = await fetch('contact.php', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(formData)
                             });
-                        } catch (primaryErr) {
+                        } catch (phpErr) {
+                            // Fallback to local Node server endpoint if running locally
                             response = await fetch('http://127.0.0.1:5000/api/contact', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -77,7 +76,7 @@
                     } catch (err) {
                         console.error('Error submitting form:', err);
                         statusMessageDiv.className = 'block p-4 rounded-md text-sm font-medium mb-4 bg-red-50 text-red-800 border border-red-200';
-                        statusMessageDiv.innerText = 'Backend server not running! Please open terminal in project folder and run: npm start';
+                        statusMessageDiv.innerText = 'Could not send inquiry. Please make sure files are uploaded to GoDaddy Hosting.';
                     } finally {
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnText;
