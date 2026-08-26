@@ -34,8 +34,10 @@ if (empty($fullName) || empty($companyName) || empty($email) || empty($phone) ||
 
 $smtpUser  = 'admin@gigzar.com';
 $smtpPass  = 'TURN@kvr2026';
-$toEmail   = 'admin@gigzar.com';
-$subject   = "New Manpower Inquiry from $fullName ($companyName)";
+
+// Send to both GoDaddy email & personal Gmail to ensure 100% receipt
+$recipients = ['admin@gigzar.com', '1996dhakre1996@gmail.com', 'ravidhakre@gmail.com'];
+$subject    = "New Manpower Inquiry: $fullName ($companyName)";
 
 $emailBody = "
 <!DOCTYPE html>
@@ -44,7 +46,7 @@ $emailBody = "
 <body style='font-family: Arial, sans-serif; background-color: #f4f4f5; padding: 20px;'>
     <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e4e4e7; overflow: hidden;'>
         <div style='background-color: #2563eb; padding: 20px; text-align: center; color: #ffffff;'>
-            <h2 style='margin: 0;'>Gigzar - New Website Inquiry</h2>
+            <h2 style='margin: 0;'>Gigzar - New Callback Request</h2>
         </div>
         <div style='padding: 24px; color: #18181b; line-height: 1.6;'>
             <p style='font-size: 16px; margin-top: 0;'>You have received a new manpower request from your website form:</p>
@@ -57,7 +59,7 @@ $emailBody = "
             </table>
         </div>
         <div style='background-color: #f8fafc; padding: 12px 20px; text-align: center; font-size: 12px; color: #71717a;'>
-            Sent via Gigzar Website Contact Form on GoDaddy Hosting
+            Received on ".date('Y-m-d H:i:s')." IST via Gigzar Website
         </div>
     </div>
 </body>
@@ -73,7 +75,7 @@ function sendSmtpMail($host, $port, $user, $pass, $from, $to, $subject, $body, $
         ]
     ]);
     
-    $socket = stream_socket_client("ssl://" . $host . ":" . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $context);
+    $socket = @stream_socket_client("ssl://" . $host . ":" . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $context);
     if (!$socket) {
         return "Socket Error: $errstr ($errno)";
     }
@@ -88,16 +90,12 @@ function sendSmtpMail($host, $port, $user, $pass, $from, $to, $subject, $body, $
     }
 
     getResponse($socket);
-
     fputs($socket, "EHLO " . $host . "\r\n");
     getResponse($socket);
-
     fputs($socket, "AUTH LOGIN\r\n");
     getResponse($socket);
-
     fputs($socket, base64_encode($user) . "\r\n");
     getResponse($socket);
-
     fputs($socket, base64_encode($pass) . "\r\n");
     $authRes = getResponse($socket);
 
@@ -108,10 +106,8 @@ function sendSmtpMail($host, $port, $user, $pass, $from, $to, $subject, $body, $
 
     fputs($socket, "MAIL FROM: <$from>\r\n");
     getResponse($socket);
-
     fputs($socket, "RCPT TO: <$to>\r\n");
     getResponse($socket);
-
     fputs($socket, "DATA\r\n");
     getResponse($socket);
 
@@ -134,44 +130,46 @@ function sendSmtpMail($host, $port, $user, $pass, $from, $to, $subject, $body, $
     return "SMTP Send Error: " . trim($dataRes);
 }
 
-// Try Titan SMTP first (smtp.titan.email:465)
-$sentTitan = sendSmtpMail('smtp.titan.email', 465, $smtpUser, $smtpPass, $smtpUser, $toEmail, $subject, $emailBody, $email);
+// Send to all recipient addresses
+$sentErrors = [];
+$successCount = 0;
 
-if ($sentTitan === true) {
+foreach ($recipients as $recipient) {
+    // Try Titan SMTP first
+    $res = sendSmtpMail('smtp.titan.email', 465, $smtpUser, $smtpPass, $smtpUser, $recipient, $subject, $emailBody, $email);
+    if ($res === true) {
+        $successCount++;
+    } else {
+        // Fallback to GoDaddy SMTP
+        $res2 = sendSmtpMail('smtpout.secureserver.net', 465, $smtpUser, $smtpPass, $smtpUser, $recipient, $subject, $emailBody, $email);
+        if ($res2 === true) {
+            $successCount++;
+        } else {
+            // Fallback to standard PHP mail()
+            $headers  = "MIME-Version: 1.0\r\n";
+            $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $headers .= "From: Gigzar Website <$smtpUser>\r\n";
+            $headers .= "Reply-To: $email\r\n";
+            if (@mail($recipient, $subject, $emailBody, $headers)) {
+                $successCount++;
+            } else {
+                $sentErrors[] = "Failed $recipient: Titan($res) GoDaddy($res2)";
+            }
+        }
+    }
+}
+
+if ($successCount > 0) {
     http_response_code(200);
     echo json_encode([
         'success' => true,
         'message' => 'Your request has been sent successfully! Our team will contact you within 24 hours.'
     ]);
 } else {
-    // Fallback to GoDaddy SMTP (smtpout.secureserver.net:465)
-    $sentGoDaddy = sendSmtpMail('smtpout.secureserver.net', 465, $smtpUser, $smtpPass, $smtpUser, $toEmail, $subject, $emailBody, $email);
-    if ($sentGoDaddy === true) {
-        http_response_code(200);
-        echo json_encode([
-            'success' => true,
-            'message' => 'Your request has been sent successfully! Our team will contact you within 24 hours.'
-        ]);
-    } else {
-        // Fallback to standard PHP mail()
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: Gigzar Website <$smtpUser>\r\n";
-        $headers .= "Reply-To: $email\r\n";
-
-        if (@mail($toEmail, $subject, $emailBody, $headers)) {
-            http_response_code(200);
-            echo json_encode([
-                'success' => true,
-                'message' => 'Your request has been sent successfully! Our team will contact you within 24 hours.'
-            ]);
-        } else {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Failed to send email.',
-                'error'   => "Titan: $sentTitan | GoDaddy: $sentGoDaddy"
-            ]);
-        }
-    }
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Failed to send inquiry email.',
+        'error'   => implode(' | ', $sentErrors)
+    ]);
 }
